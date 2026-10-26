@@ -1,0 +1,12 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["467CNRQYUD.whateverett.Grifter"],
+        "components": [
+          { "/": "/join", "?": { "t": "?*" }, "comment": "Group invite links" }
+        ]
+      }
+    ]
+  }
+}
