@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- The link's token is the page's only key: keep it out of search
+       engines and out of the Referer header sent to gift shops. -->
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Wish List</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .intro { margin-top: 0; }
+    .jump { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+    .jump a { display: inline-block; padding: .3rem .8rem; border-radius: 1rem; background: #f2f2f7; color: inherit; text-decoration: none; font-size: .95rem; }
+    h2 { font-size: 1.35rem; margin: 2rem 0 .75rem; }
+    .item { border: 1px solid #d2d2d7; border-radius: .8rem; padding: .85rem 1rem; margin: .6rem 0; }
+    .item .row { display: flex; gap: .85rem; align-items: flex-start; }
+    .item .row > .body { flex: 1; min-width: 0; }
+    .item img { width: 4.5rem; height: 4.5rem; object-fit: cover; border-radius: .5rem; background: #f2f2f7; flex: none; }
+    .item .top { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+    .item .title { font-weight: 600; }
+    .item .price { color: #6e6e73; white-space: nowrap; }
+    .item .notes { margin: .25rem 0 0; color: #6e6e73; font-size: .95rem; white-space: pre-line; }
+    .item .actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: .6rem; min-height: 2.75rem; }
+    .item.taken { opacity: .45; }
+    .item.taken .status { font-weight: 600; }
+    .item.mine .status { color: #248a3d; font-weight: 600; }
+    button { font: inherit; cursor: pointer; }
+    .claim { background: #0a7aff; color: #fff; border: 0; padding: .55rem 1rem; border-radius: .6rem; font-weight: 600; min-height: 2.75rem; }
+    .link-button { background: none; border: 0; padding: .5rem 0; color: #0a7aff; min-height: 2.75rem; }
+    .empty { color: #6e6e73; }
+    .banner { margin: 2.5rem 0 1rem; padding: 1.25rem; border-radius: 1rem; background: #eaf3ff; text-align: center; }
+    .banner p { margin: .25rem 0 1rem; }
+    dialog { border: 0; border-radius: 1rem; padding: 1.25rem; max-width: 22rem; width: calc(100% - 2.5rem); box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+    dialog::backdrop { background: rgba(0,0,0,.35); }
+    dialog h3 { margin: 0 0 .75rem; }
+    dialog label { display: block; margin-bottom: .35rem; }
+    dialog input { font: inherit; width: 100%; box-sizing: border-box; padding: .55rem .7rem; border: 1px solid #c7c7cc; border-radius: .5rem; }
+    dialog .buttons { display: flex; justify-content: flex-end; gap: .75rem; margin-top: 1rem; }
+    dialog .cancel { background: none; border: 0; color: #0a7aff; padding: .55rem .5rem; }
+    .error { color: #c4291c; margin: .6rem 0 0; }
+    @media (prefers-color-scheme: dark) {
+      .jump a { background: #1c1c1e; }
+      .item { border-color: #38383a; }
+      .item .price, .item .notes, .empty { color: #a1a1a6; }
+      .item.mine .status { color: #30d158; }
+      .banner { background: #0d2440; }
+      dialog { background: #1c1c1e; color: #f5f5f7; }
+      dialog input { background: #000; color: #f5f5f7; border-color: #48484a; }
+      .error { color: #ff6961; }
+    }
+  </style>
+</head>
+<body>
+  <main id="page">
+    <p class="muted">Loading…</p>
+  </main>
+
+  <!-- Below the lists, so it never sits between a visitor and the gifts.
+       About the visitor's own planning, never about the kids. -->
+  <aside class="banner" id="banner" hidden>
+    <strong>🎄 Planning gifts with family?</strong>
+    <p>Grifter keeps gift chats secret from the person they're for.</p>
+    <a class="button" href="/get">Get Grifter</a>
+  </aside>
+
+  <dialog id="claim-dialog">
+    <form method="dialog" id="claim-form">
+      <h3 id="claim-title">I'll get this</h3>
+      <label for="claim-name" id="claim-label">Your name</label>
+      <input id="claim-name" name="name" maxlength="40" autocomplete="name" required>
+      <p class="error" id="claim-error" role="alert" hidden></p>
+      <div class="buttons">
+        <button type="button" class="cancel" id="claim-cancel">Cancel</button>
+        <button type="submit" class="claim" id="claim-submit">I'll get it</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+  (() => {
+    // The page runs against the cloud project; served from this Mac
+    // (python3 -m http.server in site/), it uses local Supabase instead.
+    const local = ['localhost', '127.0.0.1'].includes(location.hostname);
+    const API = local ? 'http://127.0.0.1:54321' : 'https://yuqnplikaepvruwlvdcv.supabase.co';
+    // Publishable keys are public by design; RLS and the functions guard the data.
+    const KEY = local ? 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH'
+                      : 'sb_publishable_YdZohc8ddgnsXEt1msJl0Q_lilvIReD';
+    const DEAD = "This wish list link isn't active any more. Ask the family for a new one.";
+
+    // The token is in the fragment (#k=…), which browsers never send to
+    // the server, so it stays out of GitHub's logs.
+    const token = new URLSearchParams(location.hash.slice(1)).get('k');
+    const page = document.getElementById('page');
+    const dialog = document.getElementById('claim-dialog');
+    const nameInput = document.getElementById('claim-name');
+    const claimError = document.getElementById('claim-error');
+    const submit = document.getElementById('claim-submit');
+
+    // This browser's claims (item id → undo secret) and name, per link.
+    const storageKey = 'grifter-list:' + token;
+    const load = () => { try { return JSON.parse(localStorage.getItem(storageKey)) || {}; } catch { return {}; } };
+    const save = (s) => { try { localStorage.setItem(storageKey, JSON.stringify(s)); } catch {} };
+    let stored = load();
+    stored.undo = stored.undo || {};
+
+    let kidNames = 'the family';
+    let claiming = null;
+
+    async function rpc(name, args) {
+      const res = await fetch(`${API}/rest/v1/rpc/${name}`, {
+        method: 'POST',
+        headers: { 'apikey': KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify(args),
+        referrerPolicy: 'no-referrer',
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error((body && body.message) || 'Something went wrong. Try again.');
+      return body;
+    }
+
+    function el(tag, props = {}, ...children) {
+      const node = Object.assign(document.createElement(tag), props);
+      for (const child of children) if (child != null) node.append(child);
+      return node;
+    }
+
+    function dollars(n) {
+      const whole = Math.round(n) === Number(n);
+      return '~' + Number(n).toLocaleString('en-US', { style: 'currency', currency: 'USD',
+        minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 });
+    }
+
+    function safeLink(url) {
+      try { const u = new URL(url); return /^https?:$/.test(u.protocol) ? u.href : null; } catch { return null; }
+    }
+
+    // A turned-off link and a wrong one read the same, so tokens can't be probed.
+    function showDead() {
+      document.title = 'Wish List';
+      page.replaceChildren(el('h1', { textContent: '🎁 Wish List' }), el('p', { textContent: DEAD }));
+      document.getElementById('banner').hidden = false;
+    }
+
+    function itemCard(item, kidName) {
+      const card = el('div', { className: 'item ' + item.status });
+      const body = el('div', { className: 'body' });
+      const top = el('div', { className: 'top' }, el('span', { className: 'title', textContent: item.title }));
+      if (item.price != null) top.append(el('span', { className: 'price', textContent: dollars(item.price) }));
+      body.append(top);
+      if (item.notes) body.append(el('p', { className: 'notes', textContent: item.notes }));
+      const row = el('div', { className: 'row' });
+      // Photos live in a public bucket under random names; only that shape is used.
+      if (item.image && /^[0-9a-f-]{36}\.jpg$/.test(item.image)) {
+        row.append(el('img', { src: `${API}/storage/v1/object/public/wishlist-images/${item.image}`,
+                               alt: '', loading: 'lazy', referrerPolicy: 'no-referrer' }));
+      }
+      row.append(body);
+      card.append(row);
+
+      const actions = el('div', { className: 'actions' });
+      const link = item.url && safeLink(item.url);
+      const left = link
+        ? el('a', { href: link, target: '_blank', rel: 'noopener noreferrer', textContent: 'View ↗' })
+        : el('span');
+      if (item.status === 'taken') {
+        actions.append(el('span', { className: 'status', textContent: 'Taken' }), left);
+      } else if (item.status === 'mine') {
+        const status = el('span', { className: 'status', textContent: "✓ You're getting this" });
+        const undo = el('button', { className: 'link-button', textContent: 'Undo' });
+        undo.setAttribute('aria-label', `Undo: you're no longer getting ${item.title}`);
+        undo.addEventListener('click', () => unclaim(item, undo));
+        actions.append(el('span', {}, status, ' · ', undo), left);
+      } else {
+        const claim = el('button', { className: 'claim', textContent: "I'll get this" });
+        claim.setAttribute('aria-label', `I'll get ${item.title}`);
+        claim.addEventListener('click', () => openClaim(item, kidName));
+        actions.append(left, claim);
+      }
+      card.append(actions);
+      return card;
+    }
+
+    function render(data) {
+      kidNames = data.title.replace(/'s Wish Lists?$/, '');
+      document.title = data.title;
+      const parts = [
+        el('h1', { textContent: '🎁 ' + data.title }),
+        el('p', { className: 'intro', textContent: 'Tap “I’ll get this” so nobody buys the same thing.' }),
+      ];
+      const kids = data.kids || [];
+      if (kids.length > 1) {
+        parts.push(el('ul', { className: 'jump' },
+          ...kids.map((kid, i) => el('li', {}, el('a', { href: '#', textContent: kid.name,
+            onclick: (e) => { e.preventDefault(); document.getElementById('kid-' + i).scrollIntoView({ behavior: 'smooth' }); } })))));
+      }
+      kids.forEach((kid, i) => {
+        parts.push(el('h2', { id: 'kid-' + i, textContent: kid.name }));
+        // Open and your own first, in list order; taken ones at the bottom.
+        const items = [...kid.items].sort((a, b) => (a.status === 'taken') - (b.status === 'taken'));
+        if (items.length === 0) parts.push(el('p', { className: 'empty', textContent: `Nothing on ${kid.name}’s list yet.` }));
+        for (const item of items) parts.push(itemCard(item, kid.name));
+      });
+      page.replaceChildren(...parts);
+      document.getElementById('banner').hidden = false;
+    }
+
+    async function refresh() {
+      if (!token) return showDead();
+      let data;
+      try {
+        data = await rpc('public_wishlist', { _token: token, _undo: Object.values(stored.undo) });
+      } catch (e) {
+        page.replaceChildren(el('p', { textContent: "Couldn't load the list. Check your connection and reload the page." }));
+        return;
+      }
+      if (!data) return showDead();
+      // Forget claims that are gone (e.g. a parent removed one).
+      const mine = new Set(data.kids.flatMap(k => k.items).filter(i => i.status === 'mine').map(i => i.id));
+      for (const id of Object.keys(stored.undo)) if (!mine.has(id)) delete stored.undo[id];
+      save(stored);
+      render(data);
+    }
+
+    function friendly(message, kidName) {
+      if (message === 'This link was turned off.') return `This link was turned off. Ask ${kidName}’s parents for a new one.`;
+      return message;
+    }
+
+    function openClaim(item, kidName) {
+      claiming = { item, kidName };
+      document.getElementById('claim-title').textContent = `I'll get “${item.title}”`;
+      document.getElementById('claim-label').textContent = `Your name (so ${kidName}’s parents know who to thank)`;
+      nameInput.value = stored.name || '';
+      claimError.hidden = true;
+      submit.disabled = false;
+      dialog.showModal();
+      nameInput.focus();
+    }
+
+    document.getElementById('claim-cancel').addEventListener('click', () => dialog.close());
+
+    document.getElementById('claim-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = nameInput.value.trim();
+      if (!name || !claiming) return;
+      submit.disabled = true;
+      claimError.hidden = true;
+      try {
+        const secret = await rpc('web_claim', { _token: token, _item: claiming.item.id, _name: name });
+        stored.name = name;
+        stored.undo[claiming.item.id] = secret;
+        save(stored);
+        dialog.close();
+        await refresh();
+      } catch (err) {
+        claimError.textContent = friendly(err.message, claiming.kidName);
+        claimError.hidden = false;
+        submit.disabled = false;
+        // Someone else got there first: show it as taken behind the dialog.
+        refresh();
+      }
+    });
+
+    async function unclaim(item, button) {
+      button.disabled = true;
+      try {
+        await rpc('web_unclaim', { _token: token, _undo: stored.undo[item.id] });
+        delete stored.undo[item.id];
+        save(stored);
+      } catch (err) {
+        // A failed request keeps the secret, so Undo can be tried again.
+        alert(friendly(err.message, kidNames));
+        button.disabled = false;
+      }
+      await refresh();
+    }
+
+    window.addEventListener('hashchange', () => location.reload());
+    refresh();
+  })();
+  </script>
+</body>
+</html>
