@@ -9,6 +9,8 @@
   <meta name="referrer" content="no-referrer">
   <title>Wish List</title>
   <link rel="stylesheet" href="/style.css">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <style>
     .intro { margin-top: 0; }
     .jump { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 0; padding: 0; list-style: none; }
@@ -32,6 +34,7 @@
     .empty { color: #6e6e73; }
     .banner { margin: 2.5rem 0 1rem; padding: 1.25rem; border-radius: 1rem; background: #eaf3ff; text-align: center; }
     .banner p { margin: .25rem 0 1rem; }
+    .banner .app-icon { display: block; margin: 0 auto .75rem; border-radius: 14px; box-shadow: 0 2px 8px rgba(0,0,0,.15); }
     dialog { border: 0; border-radius: 1rem; padding: 1.25rem; max-width: 22rem; width: calc(100% - 2.5rem); box-shadow: 0 10px 40px rgba(0,0,0,.25); }
     dialog::backdrop { background: rgba(0,0,0,.35); }
     dialog h3 { margin: 0 0 .75rem; }
@@ -60,7 +63,8 @@
   <!-- Below the lists, so it never sits between a visitor and the gifts.
        About the visitor's own planning, never about the kids. -->
   <aside class="banner" id="banner" hidden>
-    <strong>🎄 Planning gifts with family?</strong>
+    <img class="app-icon" src="/app-icon.png" alt="" width="64" height="64">
+    <strong>Planning gifts with family?</strong>
     <p>Grifter keeps gift chats secret from the person they're for.</p>
     <a class="button" href="/get">Get Grifter</a>
   </aside>
